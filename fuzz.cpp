@@ -179,5 +179,10 @@ int main(){
     pair<bool, pair<string, vector<int>>> p = fuzzing();
     if (p.first){
         cout << "все тесты успешны" << endl;
+    }else{
+        cout << "найдена ошибка: " << p.second.first << " и правила:" << endl;
+        for (int ruleNum: p.second.second){
+            cout << ruleNum << endl;
+        }
     }
 }

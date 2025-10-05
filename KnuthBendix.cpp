@@ -52,7 +52,6 @@ vector<pair<string,string>> getCriticalPairsForPairRules(Rule rule1, Rule rule2)
         if (l2.substr(l2.length() - i, i) == l1.substr(0, i)){
             pair<string,string> p;
             string commonS = l2 + l1.substr(i, l1.length() - i);
-            //cout << commonS << " " << i <<  l1.length() - i <<  endl;
             //применяем 1 правило, меняем l1
             executeRule(rule1, commonS, l2.length() - i);
             p.first = commonS;
@@ -127,7 +126,7 @@ void getAllCriticalPairs(){
 }
 
 //проверим, можно ли применить правило из списка Rules
-pair<bool, int> checkIsRuleMayBeApplied(Rule rule, const string& s){
+pair<bool, int> checkMayRuleBeApplied(Rule rule, const string& s){
     pair<bool, int> p;
     size_t found = s.find(rule.l);
     p.second = found;
@@ -141,10 +140,26 @@ pair<bool, int> checkIsRuleMayBeApplied(Rule rule, const string& s){
     return p;
 }
 
+//сравнение строк на выбранном фундированном порядке 
+//порядок такой: в начале смотрим на длину, а в случае равенства - сравниваем лексикографически
+//если первая строка больше, то возвращаем true, иначе false
+bool compare(const string& s1, const string& s2){
+    if (s1.length() > s2.length()){
+        return true;
+    }
+    if (s1.length() < s2.length()){
+        return false;
+    }
+    if (s1 > s2){
+        return true;
+    }
+    return false;
+}
+
 //приводим строку к нормальной форме
 void normalize(string& s){
     for (Rule rule: Rules){
-        pair<bool, int> p = checkIsRuleMayBeApplied(rule, s);
+        pair<bool, int> p = checkMayRuleBeApplied(rule, s);
         if (p.first){
             executeRule(rule, s, p.second);
             normalize(s);
@@ -154,32 +169,31 @@ void normalize(string& s){
     }
 }
 
-//сравнение строк на выбранном фундированном порядке 
-//порядок такой: в начале смотрим на длину, а в случае равенства - сравниваем лексикографически
-//возвращаем пару: (большая, меньшая)
-pair<string, string> compare(const string& s1, const string& s2){
-    pair<string, string> p;
-    if (s1.length() > s2.length()){
-        p.first = s1;
-        p.second = s2;
-        return p;
+//приводим строку к нормальной форме
+//но при этом будем также передавать строку-ограничение, то есть
+//чтобы если при выполнении какого-то правила строка стала <=, чем строка-ограничение,
+//то делаем откат
+//count - счетчик, это нужно поскольку, если на 1-ом вызове окажется, что есть
+//правило s -> restriction, то будут проблемы
+void normalizeWithRestriction(string& s, const string& restriction, int count){
+    for (Rule rule: Rules){
+        pair<bool, int> p = checkMayRuleBeApplied(rule, s);
+        string copy = s;
+        if (p.first && !(rule.l == "" && rule.r == "")){
+            if (count == 0 && rule.l == s && rule.r == restriction){
+                count += 1;
+                continue;
+            }
+            executeRule(rule, s, p.second);
+            if (compare(restriction, s)){
+                s = copy;
+                continue;
+            }
+            normalizeWithRestriction(s, restriction, count);
+        }else{
+            continue;
+        }
     }
-
-    if (s1.length() < s2.length()){
-        p.first = s2;
-        p.second = s1;
-        return p;
-    }
-
-    if (s1 > s2){
-        p.first = s1;
-        p.second = s2;
-        return p;
-    }
-
-    p.first = s2;
-    p.second = s1;
-    return p;
 }
 
 //собстна алгоритм Кнута-Бендикса
@@ -197,7 +211,14 @@ void KnuthBendix(){
         normalize(p.second);
         //cout << p.first << " " << p.second << endl; 
         if (p.first != p.second){
-            pair<string, string> pMaxMin = compare(p.first, p.second);
+            pair<string, string> pMaxMin;
+            if (compare(p.first, p.second)){
+                pMaxMin.first = p.first;
+                pMaxMin.second = p.second;
+            }else{
+                pMaxMin.first = p.second;
+                pMaxMin.second = p.first;
+            }
             Rule r(pMaxMin.first, pMaxMin.second);
             Rules.push_back(r);
 
@@ -210,16 +231,73 @@ void KnuthBendix(){
     }
 }
 
+//проверка, есть ли среди правил правило c указанной левой
+//и правой частью. 
+bool checkRule(const string& left, const string& right){
+    for (Rule rule: Rules){
+
+        if ((rule.l != left) || (rule.r != right)){
+            continue;
+        }else{
+            return true;
+        }
+    }
+    return false;
+
+}
+
+//будем избавляться от некоторых правил
+void reduce(){
+    for (Rule& rule: Rules){
+        string left = rule.l;
+        string right = rule.r;
+        //cout << rule.l << " " << rule.r << " " << left << " " << right << endl;
+        normalizeWithRestriction(left, right, 0);
+        //cout << rule.l << " " << rule.r << " " << left << " " << right << endl;
+        if (!checkRule(left, right)){
+            if (left == right){
+                //cout << 1 << rule.l << " " << rule.r << " " << left << " " << right << endl;
+                //просто избавимся от старого правила
+                rule.l = "";
+                rule.r = ""; 
+            }else{
+                //cout << 2 << rule.l << " " << rule.r << " " << left << " " << right << endl;
+                //проводим новое правило, вместо старого
+                rule.l = left;
+                rule.r = right;
+            }
+        }else{
+            if (rule.l != left || rule.r != right){
+                //просто избавимся от старого правила
+                //cout << 3 << rule.l << " " << rule.r << " " << left << " " << right << endl;
+                rule.l = "";
+                rule.r = "";
+            }
+        }
+        
+    }
+}
+
 int main(){
     initRules();
     KnuthBendix();
+    reduce();
+    /*
+    string l = "bbbb";
+    string r = "bb";
+    normalizeWithRestriction(l, r, 0);
+    cout << l << endl;
+    */
     for (Rule rule: Rules){
-        cout << rule.l << " " << rule.r << endl; 
+        if (!(rule.l == "" && rule.r == "")){
+            cout << rule.l << " " << rule.r << endl;
+        } 
     }
 }
 
 
 /*
+без reduce()
 должно получиться
 
 aaaa a
@@ -246,5 +324,17 @@ abb bb
 bba bb
 bb ba
 aba ba
+
+с reduce() должно получиться
+aaaa a
+aaab b
+aaaba babb
+baba baab
+bab baa
+babbb babba
+aaba baa
+baa abb
+aba bb
+bb ba
 */
 
